@@ -56,6 +56,17 @@ IPHONE_VERIFICATION = {
     "required_tags": ["Apple:ContentIdentifier", "Apple:ImageUniqueID"],
 }
 
+# Storage path template
+# Photos organized as: YYYY/YYYY-MM/pictures/ or YYYY/YYYY-MM/videos/
+STORAGE_PATH_TEMPLATE = {
+    "pictures": "{year}/{year}-{month:02d}/pictures/{filename}",
+    "videos": "{year}/{year}-{month:02d}/videos/{filename}",
+}
+
+# File type classification
+PICTURE_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.heic', '.heif', '.raw', '.cr2', '.nef', '.arw', '.dng', '.gif', '.bmp', '.tiff', '.webp'}
+VIDEO_EXTENSIONS = {'.mp4', '.mov', '.m4v', '.hevc', '.avi', '.mkv', '.webm', '.3gp'}
+
 # Processing
 MAX_WORKERS = int(os.getenv("MAX_WORKERS", "4"))
 BATCH_SIZE = int(os.getenv("BATCH_SIZE", "100"))
