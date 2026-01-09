@@ -1,0 +1,289 @@
+name: db-migration
+description: Create and apply database migrations with Alembic
+prompt: |
+  You are creating a database migration using Alembic.
+
+  **Step 1: Determine Operation**
+
+  Ask the user:
+  1. **What to do** - create new migration, apply migrations, rollback, or check status
+  2. **Migration type** - auto-generate from models or write manual migration
+  3. **Description** - brief description of what's changing (e.g., "add users table", "add email index")
+
+  **Step 2: Operations**
+
+  **Create New Migration (Auto-generate):**
+  ```bash
+  # Auto-detect changes from SQLAlchemy models
+  docker-compose exec app alembic revision --autogenerate -m "description"
+
+  # Example:
+  docker-compose exec app alembic revision --autogenerate -m "add users table"
+  docker-compose exec app alembic revision --autogenerate -m "add email index to users"
+  ```
+
+  **Create Manual Migration:**
+  ```bash
+  # For custom SQL or complex operations
+  docker-compose exec app alembic revision -m "description"
+  ```
+
+  **Apply Migrations:**
+  ```bash
+  # Apply all pending migrations
+  docker-compose exec app alembic upgrade head
+
+  # Apply specific migration
+  docker-compose exec app alembic upgrade <revision_id>
+
+  # Apply one migration at a time
+  docker-compose exec app alembic upgrade +1
+  ```
+
+  **Rollback Migrations:**
+  ```bash
+  # Rollback last migration
+  docker-compose exec app alembic downgrade -1
+
+  # Rollback to specific version
+  docker-compose exec app alembic downgrade <revision_id>
+
+  # Rollback all migrations
+  docker-compose exec app alembic downgrade base
+  ```
+
+  **Check Migration Status:**
+  ```bash
+  # Show current version
+  docker-compose exec app alembic current
+
+  # Show migration history
+  docker-compose exec app alembic history
+
+  # Show pending migrations
+  docker-compose exec app alembic heads
+  ```
+
+  **Step 3: Review Generated Migration**
+
+  After auto-generating, show the user the file location:
+  ```
+  alembic/versions/{revision_id}_description.py
+  ```
+
+  **Review the migration file:**
+  - Check the `upgrade()` function (applies changes)
+  - Check the `downgrade()` function (reverts changes)
+  - Verify it matches your intent
+  - Add data migrations if needed
+
+  **Example Migration File:**
+  ```python
+  """add users table
+
+  Revision ID: abc123def456
+  Revises:
+  Create Date: 2026-01-09 00:00:00.000000
+
+  """
+  from alembic import op
+  import sqlalchemy as sa
+
+  # revision identifiers, used by Alembic.
+  revision = 'abc123def456'
+  down_revision = None
+  branch_labels = None
+  depends_on = None
+
+  def upgrade() -> None:
+      op.create_table(
+          'users',
+          sa.Column('id', sa.Integer(), nullable=False),
+          sa.Column('email', sa.String(255), nullable=False),
+          sa.Column('hashed_password', sa.String(), nullable=False),
+          sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
+          sa.PrimaryKeyConstraint('id')
+      )
+      op.create_index(op.f('ix_users_email'), 'users', ['email'], unique=True)
+
+  def downgrade() -> None:
+      op.drop_index(op.f('ix_users_email'), table_name='users')
+      op.drop_table('users')
+  ```
+
+  **Step 4: Manual Migration Patterns**
+
+  **Add Column:**
+  ```python
+  def upgrade() -> None:
+      op.add_column('users', sa.Column('phone', sa.String(20), nullable=True))
+
+  def downgrade() -> None:
+      op.drop_column('users', 'phone')
+  ```
+
+  **Add Index:**
+  ```python
+  def upgrade() -> None:
+      op.create_index('ix_users_email', 'users', ['email'], unique=True)
+
+  def downgrade() -> None:
+      op.drop_index('ix_users_email', table_name='users')
+  ```
+
+  **Rename Column:**
+  ```python
+  def upgrade() -> None:
+      op.alter_column('users', 'username', new_column_name='email')
+
+  def downgrade() -> None:
+      op.alter_column('users', 'email', new_column_name='username')
+  ```
+
+  **Data Migration:**
+  ```python
+  from alembic import op
+  from sqlalchemy import orm
+  from src.api.models import User
+
+  def upgrade() -> None:
+      # Schema change
+      op.add_column('users', sa.Column('status', sa.String(20), nullable=True))
+
+      # Data migration
+      bind = op.get_bind()
+      session = orm.Session(bind=bind)
+
+      # Update existing records
+      session.execute(
+          sa.text("UPDATE users SET status = 'active' WHERE status IS NULL")
+      )
+      session.commit()
+
+      # Make column non-nullable after populating
+      op.alter_column('users', 'status', nullable=False)
+
+  def downgrade() -> None:
+      op.drop_column('users', 'status')
+  ```
+
+  **Step 5: Testing Migrations**
+
+  **Test upgrade:**
+  ```bash
+  # Apply migration
+  docker-compose exec app alembic upgrade head
+
+  # Verify schema
+  docker-compose exec postgres psql -U postgres -d myapp -c "\d users"
+  ```
+
+  **Test downgrade:**
+  ```bash
+  # Rollback
+  docker-compose exec app alembic downgrade -1
+
+  # Verify rollback worked
+  docker-compose exec postgres psql -U postgres -d myapp -c "\d users"
+
+  # Re-apply
+  docker-compose exec app alembic upgrade head
+  ```
+
+  **Step 6: Common Issues**
+
+  **Issue: "Target database is not up to date"**
+  ```bash
+  # Check current version
+  docker-compose exec app alembic current
+
+  # Stamp database with current version (if manually fixed)
+  docker-compose exec app alembic stamp head
+  ```
+
+  **Issue: "Can't locate revision"**
+  ```bash
+  # Check migration files exist
+  ls alembic/versions/
+
+  # Verify alembic.ini points to correct location
+  docker-compose exec app cat alembic.ini
+  ```
+
+  **Issue: Auto-generate not detecting changes**
+  - Ensure models are imported in alembic/env.py
+  - Check that Base.metadata includes all models
+  - Verify database URL is correct
+
+  **Step 7: Best Practices**
+
+  **✅ DO:**
+  - Review auto-generated migrations before applying
+  - Test both upgrade and downgrade
+  - Keep migrations small and focused
+  - Write descriptive migration messages
+  - Add data migrations when changing schema
+  - Version control all migration files
+  - Test migrations on staging before production
+
+  **❌ DON'T:**
+  - Edit already-applied migrations
+  - Delete migration files
+  - Skip testing downgrade
+  - Make destructive changes without backups
+  - Apply migrations directly in production without testing
+
+  **Step 8: Production Deployment**
+
+  ```bash
+  # 1. Backup database first!
+  docker-compose exec postgres pg_dump -U postgres myapp > backup.sql
+
+  # 2. Apply migrations
+  docker-compose exec app alembic upgrade head
+
+  # 3. Verify application works
+  docker-compose exec app python -c "from src.api.database import engine; engine.connect()"
+
+  # 4. If something breaks, rollback
+  docker-compose exec app alembic downgrade -1
+  ```
+
+  **Step 9: Alembic Configuration**
+
+  **alembic.ini** should have:
+  ```ini
+  script_location = alembic
+  prepend_sys_path = .
+  version_path_separator = os
+  sqlalchemy.url = driver://user:pass@localhost/dbname  # Override in env.py
+  ```
+
+  **alembic/env.py** should import models:
+  ```python
+  from src.api.database import Base
+  from src.api.models import User, Product  # Import all models
+  target_metadata = Base.metadata
+  ```
+
+  **Step 10: Adding Alembic to New Project**
+
+  If project doesn't have Alembic yet:
+  ```bash
+  # Install
+  pip install alembic
+  # Add to requirements.txt
+
+  # Initialize
+  docker-compose exec app alembic init alembic
+
+  # Configure alembic/env.py to use your database URL
+  # Import all models in env.py
+  # Create first migration
+  docker-compose exec app alembic revision --autogenerate -m "initial migration"
+
+  # Apply
+  docker-compose exec app alembic upgrade head
+  ```
+
+  **Reference**: docker-deployment.md line 443-463 for migration patterns.

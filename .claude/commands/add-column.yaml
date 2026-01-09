@@ -1,0 +1,206 @@
+name: add-column
+description: Add a new column to existing database table with migration
+prompt: |
+  You are adding a new column to an existing database table.
+
+  **Step 1: Gather Requirements**
+
+  Ask the user:
+  1. **Table name** (e.g., "users", "products", "orders")
+  2. **Column name** (e.g., "email_verified", "last_login_at")
+  3. **Column type** (str, int, bool, datetime, etc.)
+  4. **Nullable** - Can this column be NULL? (important for existing rows)
+  5. **Default value** - What default for existing rows? (if NOT NULL)
+  6. **Index** - Should this column be indexed?
+
+  **Step 2: Determine Migration Strategy**
+
+  **If column is NOT NULL and table has existing data:**
+  - MUST provide default value
+  - Or do a two-step migration:
+    1. Add column as nullable
+    2. Populate data
+    3. Make non-nullable
+
+  **If column is nullable:**
+  - Simple migration, existing rows get NULL
+
+  **Step 3: Update SQLAlchemy Model**
+
+  Add column to model file:
+  ```python
+  from sqlalchemy import Column, String, Boolean, DateTime, Integer
+
+  class User(Base):
+      __tablename__ = "users"
+
+      # Existing columns...
+
+      # New column
+      email_verified = Column(Boolean, default=False, nullable=False)
+      # Or with datetime
+      last_login_at = Column(DateTime(timezone=True), nullable=True)
+      # Or with index
+      phone = Column(String(20), nullable=True, index=True)
+  ```
+
+  **Step 4: Update Pydantic Schemas**
+
+  Add field to schemas:
+  ```python
+  # In ResourceBase (if shared property)
+  class UserBase(BaseModel):
+      email: str
+      email_verified: bool = False  # New field with default
+
+  # Or in ResourceUpdate (if updatable)
+  class UserUpdate(BaseModel):
+      email_verified: Optional[bool] = None  # Optional for updates
+
+  # In ResourceResponse (always include)
+  class UserResponse(UserBase):
+      id: int
+      email_verified: bool  # Always return current value
+      created_at: datetime
+  ```
+
+  **Step 5: Create Migration**
+
+  **Simple migration (nullable or has default):**
+  ```bash
+  docker-compose exec app alembic revision --autogenerate -m "add {column_name} to {table_name}"
+  ```
+
+  **Two-step migration (for NOT NULL without default):**
+
+  **Migration 1 - Add as nullable:**
+  ```python
+  def upgrade() -> None:
+      op.add_column('{table_name}',
+          sa.Column('{column_name}', sa.String(255), nullable=True)
+      )
+
+  def downgrade() -> None:
+      op.drop_column('{table_name}', '{column_name}')
+  ```
+
+  **Migration 2 - Populate and make non-nullable:**
+  ```python
+  def upgrade() -> None:
+      # Populate existing rows
+      op.execute(
+          "UPDATE {table_name} SET {column_name} = 'default_value' WHERE {column_name} IS NULL"
+      )
+
+      # Make non-nullable
+      op.alter_column('{table_name}', '{column_name}',
+          existing_type=sa.String(255),
+          nullable=False
+      )
+
+  def downgrade() -> None:
+      op.alter_column('{table_name}', '{column_name}',
+          existing_type=sa.String(255),
+          nullable=True
+      )
+  ```
+
+  **With index:**
+  ```python
+  def upgrade() -> None:
+      op.add_column('{table_name}',
+          sa.Column('{column_name}', sa.String(255), nullable=True)
+      )
+      op.create_index('ix_{table_name}_{column_name}', '{table_name}', ['{column_name}'])
+
+  def downgrade() -> None:
+      op.drop_index('ix_{table_name}_{column_name}', table_name='{table_name}')
+      op.drop_column('{table_name}', '{column_name}')
+  ```
+
+  **Step 6: Update Service Layer (if needed)**
+
+  If column changes business logic:
+  ```python
+  class UserService:
+      def verify_email(self, db: Session, user_id: int) -> User:
+          """Mark user's email as verified."""
+          user = self.get(db, user_id)
+          if not user:
+              return None
+
+          user.email_verified = True
+          db.commit()
+          db.refresh(user)
+          return user
+  ```
+
+  **Step 7: Apply Migration**
+
+  ```bash
+  # Apply migration
+  docker-compose exec app alembic upgrade head
+
+  # Verify column exists
+  docker-compose exec postgres psql -U postgres -d myapp -c "\d {table_name}"
+  ```
+
+  **Step 8: Update Tests**
+
+  Add tests for new column:
+  ```python
+  def test_new_column_default(client, sample_user):
+      """Test new column has correct default."""
+      response = client.post("/api/v1/users/", json=sample_user)
+      assert response.status_code == 201
+      assert response.json()["email_verified"] == False  # Default value
+
+  def test_update_new_column(client, sample_user):
+      """Test updating new column."""
+      # Create user
+      create_response = client.post("/api/v1/users/", json=sample_user)
+      user_id = create_response.json()["id"]
+
+      # Update new column
+      update_response = client.patch(
+          f"/api/v1/users/{user_id}",
+          json={"email_verified": True}
+      )
+      assert update_response.status_code == 200
+      assert update_response.json()["email_verified"] == True
+  ```
+
+  **Common Column Types:**
+
+  | Type | SQLAlchemy | Python | Example |
+  |------|------------|--------|---------|
+  | String | `String(255)` | str | email, name |
+  | Text | `Text` | str | description, content |
+  | Integer | `Integer` | int | count, age |
+  | Float | `Float` | float | price, rating |
+  | Boolean | `Boolean` | bool | is_active, verified |
+  | DateTime | `DateTime(timezone=True)` | datetime | created_at, updated_at |
+  | JSON | `JSON` | dict | metadata, settings |
+
+  **Best Practices:**
+
+  ✅ **DO:**
+  - Always have a migration strategy for existing data
+  - Add index if column will be queried frequently
+  - Update both model AND schemas
+  - Test with existing data
+  - Document why column was added
+
+  ❌ **DON'T:**
+  - Add NOT NULL column without default to table with data
+  - Forget to update Pydantic schemas
+  - Skip testing migration rollback
+  - Add columns that should be in separate table (normalization)
+
+  **Rollback if needed:**
+  ```bash
+  # Rollback last migration
+  docker-compose exec app alembic downgrade -1
+  ```
+
+  **Reference**: docker-deployment.md for migration patterns

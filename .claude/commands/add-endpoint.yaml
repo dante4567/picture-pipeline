@@ -1,0 +1,96 @@
+name: add-endpoint
+description: Generate complete API endpoint with route, schemas, service, and tests
+prompt: |
+  You are creating a new API endpoint for a FastAPI application.
+
+  **Step 1: Gather Requirements**
+
+  Ask the user for:
+  1. **Resource name** (singular, e.g., "user", "product", "order")
+  2. **Fields** with types (e.g., "name: str, email: str, age: int")
+  3. **Which operations** to create (GET, POST, PUT/PATCH, DELETE)
+
+  **Step 2: Load Reference Documentation**
+
+  Read `.claude/reference/python-api-development.md` for patterns.
+
+  **Step 3: Generate Files**
+
+  Create the following files based on the patterns in the reference doc:
+
+  1. **Pydantic Schemas** (`src/api/schemas/{resource}.py`):
+     - `{Resource}Base` - Shared properties
+     - `{Resource}Create` - For POST requests
+     - `{Resource}Update` - For PATCH/PUT requests (all fields optional)
+     - `{Resource}Response` - For responses (includes id, timestamps)
+
+  2. **SQLAlchemy Model** (`src/api/models/{resource}.py`):
+     - Table name: `{resource}s` (plural)
+     - Include: id (PK), user fields, created_at, updated_at
+     - Add indexes for frequently queried fields
+
+  3. **Service Class** (`src/services/{resource}_service.py`):
+     - `{Resource}Service` class with methods:
+       - `create(db, resource_data)` - if POST requested
+       - `get(db, resource_id)` - if GET requested
+       - `list(db, skip, limit)` - if GET collection requested
+       - `update(db, resource_id, resource_data)` - if PUT/PATCH requested
+       - `delete(db, resource_id)` - if DELETE requested
+     - Keep business logic here, not in routes
+
+  4. **API Routes** (`src/api/routes/{resource}.py`):
+     - Router with prefix `/api/v1/{resource}s`
+     - Endpoints based on requested operations:
+       - `POST /` - Create (201 Created)
+       - `GET /{id}` - Get single (200 OK, 404 if not found)
+       - `GET /` - List with pagination (200 OK)
+       - `PATCH /{id}` - Update (200 OK, 404 if not found)
+       - `DELETE /{id}` - Delete (204 No Content, 404 if not found)
+     - Use dependency injection for database session
+     - Include docstrings
+
+  5. **Tests** (`tests/test_{resource}.py`):
+     - Test fixtures for sample data
+     - Tests for each endpoint:
+       - Happy path (successful operations)
+       - Error cases (404, 400, 409)
+     - Use FastAPI TestClient
+
+  **Step 4: Register Route**
+
+  Show the user how to register the new route in `src/api/main.py`:
+  ```python
+  from .routes import {resource}
+  app.include_router({resource}.router)
+  ```
+
+  **Step 5: Database Migration**
+
+  Remind the user to create a migration:
+  ```bash
+  ./run.sh shell
+  alembic revision --autogenerate -m "Add {resource}s table"
+  alembic upgrade head
+  ```
+
+  **Step 6: Verify**
+
+  Show how to test:
+  ```bash
+  ./run.sh test tests/test_{resource}.py
+  ```
+
+  **Follow all patterns from python-api-development.md:**
+  - Use Pydantic for validation
+  - Use SQLAlchemy ORM (no raw SQL)
+  - Separate concerns (routes → service → model)
+  - Proper HTTP status codes
+  - Error handling with HTTPException
+  - Include type hints
+
+  **Security checklist:**
+  - [ ] Input validation with Pydantic
+  - [ ] No SQL injection (using ORM)
+  - [ ] Proper error messages (no internal details leaked)
+  - [ ] Authentication on protected endpoints (if needed)
+  - [ ] Rate limiting (if public endpoint)

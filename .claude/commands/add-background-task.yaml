@@ -1,0 +1,298 @@
+name: add-background-task
+description: Add background task (Celery, Redis Queue, or simple async)
+prompt: |
+  You are adding a background task for long-running operations.
+
+  **Step 1: Gather Requirements**
+
+  Ask the user:
+  1. **Task purpose** - What does this task do? (send email, process video, generate report)
+  2. **Task type** - One-time, scheduled (cron), or recurring
+  3. **Priority** - High, normal, or low priority
+  4. **Duration** - How long does it take? (< 1s, < 10s, < 1min, > 1min)
+  5. **Backend** - Celery (full featured), RQ (simple), or async (lightweight)
+
+  **Step 2: Choose Backend**
+
+  | Backend | Best For | Pros | Cons |
+  |---------|----------|------|------|
+  | **Celery** | Complex workflows, scheduled tasks | Full featured, retries, monitoring | Heavy setup |
+  | **RQ** | Simple async jobs | Lightweight, easy setup | Limited features |
+  | **FastAPI BackgroundTasks** | Quick tasks (< 10s) | No dependencies | No retries, not persistent |
+
+  **Step 3: Setup (if needed)**
+
+  **For Celery:**
+  ```yaml
+  # docker-compose.yml
+  services:
+    celery-worker:
+      build: .
+      command: celery -A src.celery_app worker --loglevel=info
+      depends_on:
+        - redis
+      environment:
+        - CELERY_BROKER_URL=redis://redis:6379/0
+        - CELERY_RESULT_BACKEND=redis://redis:6379/0
+
+    celery-beat:  # For scheduled tasks
+      build: .
+      command: celery -A src.celery_app beat --loglevel=info
+      depends_on:
+        - redis
+  ```
+
+  ```python
+  # src/celery_app.py
+  from celery import Celery
+  import os
+
+  celery_app = Celery(
+      "tasks",
+      broker=os.getenv("CELERY_BROKER_URL", "redis://localhost:6379/0"),
+      backend=os.getenv("CELERY_RESULT_BACKEND", "redis://localhost:6379/0")
+  )
+
+  celery_app.conf.update(
+      task_serializer="json",
+      accept_content=["json"],
+      result_serializer="json",
+      timezone="UTC",
+      enable_utc=True,
+  )
+  ```
+
+  **For RQ:**
+  ```bash
+  pip install rq
+  ```
+
+  ```python
+  # src/queue.py
+  from redis import Redis
+  from rq import Queue
+  import os
+
+  redis_conn = Redis.from_url(os.getenv("REDIS_URL", "redis://localhost:6379"))
+  task_queue = Queue("default", connection=redis_conn)
+  ```
+
+  **Step 4: Create Task**
+
+  **Celery Task:**
+  ```python
+  # src/tasks/email_tasks.py
+  from ..celery_app import celery_app
+  from ..services.email_service import send_email
+  import time
+
+  @celery_app.task(bind=True, max_retries=3)
+  def send_welcome_email_task(self, user_email: str, username: str):
+      """
+      Send welcome email in background.
+
+      Args:
+          user_email: User's email address
+          username: User's name
+
+      Retries: 3 times with exponential backoff
+      """
+      try:
+          send_email(
+              to=user_email,
+              subject="Welcome!",
+              body=f"Hello {username}, welcome to our platform!"
+          )
+      except Exception as exc:
+          # Retry in 60 seconds
+          raise self.retry(exc=exc, countdown=60)
+
+
+  @celery_app.task
+  def process_large_file_task(file_path: str):
+      """Process large file (can take minutes)."""
+      # Long-running operation
+      time.sleep(300)  # Simulate 5 min processing
+      return {"status": "completed", "file": file_path}
+
+
+  # Scheduled task (in celery_app.py)
+  celery_app.conf.beat_schedule = {
+      "daily-report": {
+          "task": "src.tasks.report_tasks.generate_daily_report",
+          "schedule": crontab(hour=9, minute=0),  # 9 AM daily
+      },
+  }
+  ```
+
+  **RQ Task:**
+  ```python
+  # src/tasks/email_tasks.py
+  from ..queue import task_queue
+  from ..services.email_service import send_email
+
+  def send_welcome_email(user_email: str, username: str):
+      """Send welcome email (will be queued)."""
+      send_email(
+          to=user_email,
+          subject="Welcome!",
+          body=f"Hello {username}!"
+      )
+
+  # Enqueue with
+  # job = task_queue.enqueue(send_welcome_email, user_email, username)
+  ```
+
+  **FastAPI BackgroundTasks:**
+  ```python
+  # src/api/routes/user.py
+  from fastapi import BackgroundTasks
+
+  def send_welcome_email_bg(user_email: str, username: str):
+      """Background email task."""
+      time.sleep(2)  # Simulate sending
+      # ... send email
+
+  @router.post("/users/", status_code=201)
+  async def create_user(
+      user: UserCreate,
+      background_tasks: BackgroundTasks,
+      db: Session = Depends(get_db)
+  ):
+      """Create user and send welcome email in background."""
+      db_user = user_service.create(db, user)
+
+      # Add to background tasks
+      background_tasks.add_task(
+          send_welcome_email_bg,
+          db_user.email,
+          db_user.name
+      )
+
+      return db_user
+  ```
+
+  **Step 5: Trigger Task from API**
+
+  **Celery:**
+  ```python
+  from ..tasks.email_tasks import send_welcome_email_task
+
+  @router.post("/users/", status_code=201)
+  async def create_user(user: UserCreate, db: Session = Depends(get_db)):
+      db_user = user_service.create(db, user)
+
+      # Trigger Celery task (async)
+      send_welcome_email_task.delay(db_user.email, db_user.name)
+
+      # Or with ETA (execute at specific time)
+      # send_welcome_email_task.apply_async(
+      #     args=[db_user.email, db_user.name],
+      #     eta=datetime.utcnow() + timedelta(hours=1)
+      # )
+
+      return db_user
+  ```
+
+  **RQ:**
+  ```python
+  from ..queue import task_queue
+  from ..tasks.email_tasks import send_welcome_email
+
+  @router.post("/users/", status_code=201)
+  async def create_user(user: UserCreate, db: Session = Depends(get_db)):
+      db_user = user_service.create(db, user)
+
+      # Enqueue task
+      job = task_queue.enqueue(send_welcome_email, db_user.email, db_user.name)
+
+      return db_user
+  ```
+
+  **Step 6: Monitor Tasks**
+
+  **Celery with Flower:**
+  ```yaml
+  # docker-compose.yml
+  flower:
+      build: .
+      command: celery -A src.celery_app flower
+      ports:
+        - "5555:5555"
+      depends_on:
+        - redis
+  ```
+  Access at: http://localhost:5555
+
+  **RQ Dashboard:**
+  ```bash
+  pip install rq-dashboard
+  rq-dashboard --redis-url redis://localhost:6379
+  ```
+  Access at: http://localhost:9181
+
+  **Step 7: Test Tasks**
+
+  ```python
+  # tests/test_tasks.py
+  import pytest
+  from src.tasks.email_tasks import send_welcome_email_task
+
+  def test_send_welcome_email_task(mocker):
+      """Test email task."""
+      # Mock email service
+      mock_send = mocker.patch("src.tasks.email_tasks.send_email")
+
+      # Run task synchronously for testing
+      send_welcome_email_task("test@example.com", "Test User")
+
+      # Verify email was sent
+      mock_send.assert_called_once_with(
+          to="test@example.com",
+          subject="Welcome!",
+          body="Hello Test User, welcome to our platform!"
+      )
+  ```
+
+  **Step 8: Update Requirements**
+
+  ```txt
+  # For Celery
+  celery==5.3.4
+  redis==5.0.1
+  flower==2.0.1  # Optional monitoring
+
+  # For RQ
+  rq==1.15.1
+  rq-dashboard==0.6.1  # Optional monitoring
+  ```
+
+  **Best Practices:**
+
+  ✅ **DO:**
+  - Use background tasks for operations > 1 second
+  - Add retries for network operations (email, API calls)
+  - Log task start/completion
+  - Set task timeouts
+  - Monitor task failures
+
+  ❌ **DON'T:**
+  - Use background tasks for critical operations (use transactions)
+  - Forget error handling
+  - Store large data in task args (use file/database references)
+  - Run CPU-intensive tasks without scaling workers
+  - Ignore failed tasks
+
+  **Common Use Cases:**
+
+  | Use Case | Recommended Backend |
+  |----------|---------------------|
+  | Send email | FastAPI BackgroundTasks or Celery |
+  | Process upload (< 30s) | FastAPI BackgroundTasks |
+  | Process upload (> 30s) | Celery or RQ |
+  | Generate report | Celery |
+  | Scheduled tasks | Celery Beat |
+  | Video processing | Celery with multiple workers |
+  | Webhooks | RQ or Celery |
+
+  **Reference**: docker-deployment.md for docker-compose patterns

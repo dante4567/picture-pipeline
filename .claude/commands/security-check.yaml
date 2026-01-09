@@ -1,0 +1,223 @@
+name: security-check
+description: Comprehensive security audit of codebase against OWASP Top 10
+prompt: |
+  You are performing a security audit of a Python API codebase.
+
+  **Step 1: Determine Scope**
+
+  Ask the user:
+  1. **What to audit** - specific files/directories or entire codebase
+  2. **Focus areas** - all OWASP Top 10 or specific concerns (auth, input validation, etc.)
+  3. **Generate report** - summary or detailed findings with line numbers
+
+  **Step 2: Load Security Reference**
+
+  Read `.claude/reference/security-practices.md` for OWASP Top 10 patterns.
+
+  **Step 3: Scan Codebase**
+
+  Search for common security issues:
+
+  **1. Broken Access Control**
+  - Missing authorization checks on endpoints
+  - No user ownership verification
+  - Missing role-based access control (RBAC)
+
+  Search for:
+  ```python
+  @router.delete("/")  # No authorization check?
+  @router.get("/admin")  # Missing require_role check?
+  ```
+
+  **2. Cryptographic Failures**
+  - Hardcoded secrets, API keys, passwords
+  - Passwords in plaintext
+  - Weak hashing (MD5, SHA1)
+
+  Search for:
+  ```python
+  password = "hardcoded"
+  API_KEY = "sk-..."
+  hashlib.md5(password)  # Weak!
+  ```
+
+  **3. Injection Attacks**
+  - SQL injection (f-strings in queries)
+  - Command injection (os.system with user input)
+  - NoSQL injection
+
+  Search for:
+  ```python
+  f"SELECT * FROM users WHERE username = '{username}'"  # SQL injection!
+  os.system(f"ping {user_input}")  # Command injection!
+  db.collection.find({"username": user_input})  # NoSQL injection!
+  ```
+
+  **4. Insecure Design**
+  - Business logic in routes (should be in services)
+  - No input validation
+  - Missing Pydantic schemas
+
+  Check:
+  - Are routes thin (just HTTP handling)?
+  - Is business logic in service layer?
+  - Are inputs validated with Pydantic?
+
+  **5. Security Misconfiguration**
+  - Debug mode enabled
+  - CORS allow all origins
+  - Missing security headers
+
+  Search for:
+  ```python
+  DEBUG = True  # In production?
+  allow_origins=["*"]  # Never in production!
+  ```
+
+  **6. Vulnerable Dependencies**
+  Run automated checks:
+  ```bash
+  ./run.sh shell
+  pip install safety
+  safety check
+  # Or
+  pip install pip-audit
+  pip-audit
+  ```
+
+  **7. Authentication Failures**
+  - Weak JWT secrets
+  - No token expiration
+  - Tokens in localStorage (XSS risk)
+  - No rate limiting on auth endpoints
+
+  Search for:
+  ```python
+  SECRET_KEY = "secret"  # Too simple!
+  ACCESS_TOKEN_EXPIRE_MINUTES = None  # No expiration!
+  ```
+
+  **8. Software/Data Integrity**
+  - No dependency pinning (requirements.txt)
+  - Using `pip install` at runtime
+  - No checksum verification
+
+  **9. Logging Failures**
+  - Logging sensitive data (passwords, tokens)
+  - Not logging security events
+  - No structured logging
+
+  Search for:
+  ```python
+  logger.info(f"User logged in: {password}")  # Logs password!
+  ```
+
+  **10. SSRF (Server-Side Request Forgery)**
+  - Unvalidated URL parameters
+  - User-controlled request destinations
+
+  Search for:
+  ```python
+  requests.get(user_provided_url)  # SSRF risk!
+  ```
+
+  **Step 4: Generate Security Report**
+
+  Create a report with:
+
+  ```markdown
+  # Security Audit Report
+
+  **Date**: {current_date}
+  **Scope**: {files_audited}
+
+  ## Summary
+  - ✅ Passed: X checks
+  - ⚠️  Warnings: Y issues
+  - ❌ Critical: Z issues
+
+  ## Critical Issues (Fix Immediately)
+
+  ### 1. SQL Injection in user_service.py:45
+  **Risk**: High - Allows arbitrary SQL execution
+  **Current Code**:
+  ```python
+  query = f"SELECT * FROM users WHERE id = {user_id}"
+  ```
+  **Fix**:
+  ```python
+  user = db.query(User).filter(User.id == user_id).first()
+  ```
+  **Reference**: security-practices.md line 170-182
+
+  ## Warnings
+
+  ### 1. Missing Rate Limiting on /auth/login
+  **Risk**: Medium - Allows brute force attacks
+  **Fix**: Add rate limiting
+  ```python
+  @limiter.limit("5/minute")
+  @app.post("/auth/login")
+  ```
+  **Reference**: security-practices.md line 300-316
+
+  ## Passed Checks
+  - ✅ Using bcrypt for password hashing
+  - ✅ Environment variables for secrets
+  - ✅ Pydantic validation on inputs
+  - ✅ HTTPS enforced
+
+  ## Security Checklist (from security-practices.md)
+  - [ ] All secrets in environment variables
+  - [ ] HTTPS enabled
+  - [ ] CORS configured (no wildcard)
+  - [ ] Rate limiting enabled
+  - [ ] Security headers added
+  - [ ] Input validation on all endpoints
+  - [ ] SQL injection prevention
+  - [ ] Authentication implemented
+  - [ ] Authorization checks on protected resources
+  - [ ] Passwords hashed (bcrypt)
+  - [ ] File upload validation
+  - [ ] Logging enabled (no sensitive data)
+  - [ ] Dependencies audited
+  - [ ] Database connections encrypted
+  - [ ] Debug mode disabled
+  ```
+
+  **Step 5: Prioritize Fixes**
+
+  Categorize by severity:
+  - **Critical** (Fix now): Injection, hardcoded secrets, broken auth
+  - **High** (Fix soon): Missing authorization, weak crypto
+  - **Medium** (Plan fix): Missing rate limiting, no security headers
+  - **Low** (Nice to have): Logging improvements, dependency updates
+
+  **Step 6: Automated Tools**
+
+  Recommend running:
+  ```bash
+  # Dependency vulnerabilities
+  ./run.sh shell
+  pip install safety pip-audit
+  safety check
+  pip-audit
+
+  # Static analysis
+  pip install bandit
+  bandit -r src/
+
+  # Secrets detection
+  pip install detect-secrets
+  detect-secrets scan
+  ```
+
+  **Step 7: Quick Wins**
+
+  Show easy fixes that have high impact:
+  - Add rate limiting to auth endpoints (5 min)
+  - Enable security headers middleware (5 min)
+  - Pin dependency versions in requirements.txt (10 min)
+  - Add input validation with Pydantic (per endpoint, 5 min)
+
+  **Reference**: For all fixes, cite specific sections from `.claude/reference/security-practices.md` with line numbers.

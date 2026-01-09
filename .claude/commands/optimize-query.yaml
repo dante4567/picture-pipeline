@@ -1,0 +1,329 @@
+name: optimize-query
+description: Optimize slow database queries and add indexes
+prompt: |
+  You are optimizing a slow database query.
+
+  **Step 1: Identify Slow Query**
+
+  Ask the user:
+  1. **Query location** - File and function name
+  2. **Symptoms** - How slow? (ms), when does it happen?
+  3. **Query type** - SELECT, JOIN, aggregate, or complex query
+
+  **Step 2: Analyze Query**
+
+  **Get query execution plan:**
+  ```python
+  # Add to your query temporarily
+  from sqlalchemy import text
+
+  query = db.query(User).filter(User.email == "test@example.com")
+  explain = db.execute(text(f"EXPLAIN ANALYZE {str(query.statement)}"))
+  for row in explain:
+      print(row)
+  ```
+
+  **Or directly in PostgreSQL:**
+  ```sql
+  EXPLAIN ANALYZE
+  SELECT * FROM users WHERE email = 'test@example.com';
+  ```
+
+  **Look for:**
+  - **Seq Scan** (sequential scan) - Bad! Should use index
+  - **Index Scan** - Good!
+  - **Nested Loop** - Can be slow for large datasets
+  - **Hash Join** - Usually fast
+  - **High cost numbers** - Indicates expensive operation
+
+  **Step 3: Common Performance Issues**
+
+  **N+1 Query Problem:**
+  ```python
+  # ❌ BAD: N+1 queries (1 + N queries for N users)
+  users = db.query(User).all()
+  for user in users:
+      print(user.orders)  # Lazy load = 1 query per user!
+
+  # ✅ GOOD: Eager loading (1 query total)
+  from sqlalchemy.orm import joinedload
+
+  users = db.query(User).options(joinedload(User.orders)).all()
+  for user in users:
+      print(user.orders)  # Already loaded!
+  ```
+
+  **Missing Index:**
+  ```python
+  # ❌ SLOW: Sequential scan on email column
+  user = db.query(User).filter(User.email == email).first()
+
+  # ✅ FAST: Add index in model
+  class User(Base):
+      __tablename__ = "users"
+      email = Column(String(255), nullable=False, index=True)  # Add index
+
+  # Or via migration
+  # op.create_index('ix_users_email', 'users', ['email'])
+  ```
+
+  **Fetching Too Much Data:**
+  ```python
+  # ❌ BAD: Fetch all columns, all rows
+  users = db.query(User).all()  # Gets everything!
+
+  # ✅ GOOD: Fetch only needed columns
+  users = db.query(User.id, User.name).limit(100).all()
+
+  # ✅ GOOD: Pagination
+  users = db.query(User).offset(skip).limit(limit).all()
+  ```
+
+  **Inefficient JOIN:**
+  ```python
+  # ❌ SLOW: Multiple queries
+  user = db.query(User).filter(User.id == user_id).first()
+  orders = db.query(Order).filter(Order.user_id == user.id).all()
+
+  # ✅ FAST: Single JOIN query
+  result = db.query(User, Order).join(Order).filter(User.id == user_id).all()
+
+  # Or with relationship
+  user = db.query(User).options(joinedload(User.orders)).filter(User.id == user_id).first()
+  ```
+
+  **Step 4: Add Indexes**
+
+  **Single Column Index:**
+  ```python
+  # In model
+  class User(Base):
+      email = Column(String(255), index=True)  # Single column index
+
+  # Or via migration
+  def upgrade():
+      op.create_index('ix_users_email', 'users', ['email'])
+
+  def downgrade():
+      op.drop_index('ix_users_email', 'users')
+  ```
+
+  **Composite Index (Multiple Columns):**
+  ```python
+  # For queries like: WHERE status = 'active' AND created_at > '2024-01-01'
+  from sqlalchemy import Index
+
+  class Order(Base):
+      __tablename__ = "orders"
+      status = Column(String(50))
+      created_at = Column(DateTime)
+
+      __table_args__ = (
+          Index('ix_orders_status_created', 'status', 'created_at'),
+      )
+
+  # Or via migration
+  def upgrade():
+      op.create_index(
+          'ix_orders_status_created',
+          'orders',
+          ['status', 'created_at']
+      )
+  ```
+
+  **Partial Index (PostgreSQL):**
+  ```python
+  # Index only active users (saves space, faster)
+  def upgrade():
+      op.execute("""
+          CREATE INDEX ix_users_active_email
+          ON users (email)
+          WHERE is_active = true
+      """)
+  ```
+
+  **Step 5: Optimize Query Structure**
+
+  **Use SELECT specific columns:**
+  ```python
+  # ❌ SELECT *
+  users = db.query(User).all()
+
+  # ✅ SELECT specific columns
+  users = db.query(User.id, User.name, User.email).all()
+  ```
+
+  **Use COUNT efficiently:**
+  ```python
+  # ❌ SLOW: Fetch all then count
+  count = len(db.query(User).all())
+
+  # ✅ FAST: Database COUNT
+  count = db.query(User).count()
+
+  # ✅ EVEN FASTER: For large tables
+  from sqlalchemy import func
+  count = db.query(func.count(User.id)).scalar()
+  ```
+
+  **Batch Operations:**
+  ```python
+  # ❌ SLOW: One query per insert
+  for user_data in bulk_data:
+      db.add(User(**user_data))
+      db.commit()  # Don't do this in loop!
+
+  # ✅ FAST: Bulk insert
+  db.bulk_insert_mappings(User, bulk_data)
+  db.commit()  # Single commit
+  ```
+
+  **Use EXISTS instead of COUNT:**
+  ```python
+  # ❌ SLOW: Count all rows just to check if any exist
+  if db.query(User).filter(User.email == email).count() > 0:
+      ...
+
+  # ✅ FAST: Use EXISTS
+  from sqlalchemy import exists
+  if db.query(exists().where(User.email == email)).scalar():
+      ...
+  ```
+
+  **Step 6: Caching**
+
+  **Cache expensive queries:**
+  ```python
+  from functools import lru_cache
+  from datetime import datetime, timedelta
+
+  # Simple in-memory cache
+  _cache = {}
+  _cache_timeout = timedelta(minutes=5)
+
+  def get_user_count_cached(db):
+      """Cache user count for 5 minutes."""
+      cache_key = "user_count"
+      now = datetime.utcnow()
+
+      if cache_key in _cache:
+          value, timestamp = _cache[cache_key]
+          if now - timestamp < _cache_timeout:
+              return value  # Return cached value
+
+      # Cache miss or expired, fetch from database
+      count = db.query(User).count()
+      _cache[cache_key] = (count, now)
+      return count
+
+  # Or use Redis for distributed caching
+  import redis
+  r = redis.Redis()
+
+  def get_user_count_redis(db):
+      cached = r.get("user_count")
+      if cached:
+          return int(cached)
+
+      count = db.query(User).count()
+      r.setex("user_count", 300, count)  # Cache for 5 min
+      return count
+  ```
+
+  **Step 7: Database-Specific Optimizations**
+
+  **PostgreSQL Vacuum:**
+  ```sql
+  -- Reclaim space and update statistics
+  VACUUM ANALYZE users;
+  ```
+
+  **PostgreSQL Connection Pooling:**
+  ```python
+  # In database.py
+  from sqlalchemy.pool import QueuePool
+
+  engine = create_engine(
+      DATABASE_URL,
+      poolclass=QueuePool,
+      pool_size=10,      # Number of connections to keep
+      max_overflow=20,   # Max connections above pool_size
+      pool_pre_ping=True # Verify connections before use
+  )
+  ```
+
+  **Step 8: Measure Improvements**
+
+  **Before optimization:**
+  ```python
+  import time
+
+  start = time.time()
+  result = db.query(User).filter(User.email == email).first()
+  duration = time.time() - start
+  print(f"Query took {duration * 1000:.2f}ms")
+  ```
+
+  **Log slow queries:**
+  ```python
+  # Add to database.py
+  import logging
+  from sqlalchemy import event
+  from sqlalchemy.engine import Engine
+
+  logging.basicConfig()
+  logger = logging.getLogger("sqlalchemy.engine")
+  logger.setLevel(logging.INFO)
+
+  @event.listens_for(Engine, "before_cursor_execute")
+  def before_cursor_execute(conn, cursor, statement, parameters, context, executemany):
+      conn.info.setdefault("query_start_time", []).append(time.time())
+
+  @event.listens_for(Engine, "after_cursor_execute")
+  def after_cursor_execute(conn, cursor, statement, parameters, context, executemany):
+      total_time = time.time() - conn.info["query_start_time"].pop()
+      if total_time > 0.1:  # Log queries > 100ms
+          logger.warning(f"Slow query ({total_time:.2f}s): {statement}")
+  ```
+
+  **Step 9: Index Maintenance**
+
+  **Check index usage:**
+  ```sql
+  -- PostgreSQL: Find unused indexes
+  SELECT
+      schemaname,
+      tablename,
+      indexname,
+      idx_scan
+  FROM pg_stat_user_indexes
+  WHERE idx_scan = 0
+  ORDER BY schemaname, tablename;
+  ```
+
+  **Check missing indexes:**
+  ```sql
+  -- PostgreSQL: Find tables with sequential scans
+  SELECT
+      schemaname,
+      tablename,
+      seq_scan,
+      seq_tup_read,
+      idx_scan
+  FROM pg_stat_user_tables
+  WHERE seq_scan > 1000  -- Many sequential scans
+    AND idx_scan < seq_scan  -- Fewer index scans
+  ORDER BY seq_tup_read DESC;
+  ```
+
+  **Quick Wins:**
+
+  1. **Add index to frequently filtered columns** (5 min)
+  2. **Use eager loading for relationships** (10 min)
+  3. **Add pagination to list endpoints** (10 min)
+  4. **Cache expensive queries** (15 min)
+  5. **Use bulk operations for inserts** (5 min)
+
+  **Reference**:
+  - python-api-development.md for query patterns
+  - docker-deployment.md for connection pooling setup

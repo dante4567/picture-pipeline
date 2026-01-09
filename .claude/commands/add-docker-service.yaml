@@ -1,0 +1,275 @@
+name: add-docker-service
+description: Add a new service to docker-compose.yml with proper configuration
+prompt: |
+  You are adding a new service to the docker-compose.yml file.
+
+  **Step 1: Gather Requirements**
+
+  Ask the user:
+  1. **Service type** - postgres, redis, rabbitmq, elasticsearch, custom app, etc.
+  2. **Service name** - what to call it in docker-compose
+  3. **Port** - which host port to expose (if any)
+  4. **Data persistence** - does it need a volume?
+  5. **Environment variables** - any config needed?
+
+  **Step 2: Load Docker Reference**
+
+  Read `.claude/reference/docker-deployment.md` for patterns and best practices.
+
+  **Step 3: Add Service to docker-compose.yml**
+
+  Based on service type, add appropriate configuration:
+
+  **For PostgreSQL:**
+  ```yaml
+  postgres:
+    image: postgres:16-alpine
+    container_name: ${PROJECT_NAME}-postgres
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    networks:
+      - app-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+  ```
+
+  **For Redis:**
+  ```yaml
+  redis:
+    image: redis:7-alpine
+    container_name: ${PROJECT_NAME}-redis
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis-data:/data
+    networks:
+      - app-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+  ```
+
+  **For RabbitMQ:**
+  ```yaml
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    container_name: ${PROJECT_NAME}-rabbitmq
+    environment:
+      - RABBITMQ_DEFAULT_USER=${RABBITMQ_USER}
+      - RABBITMQ_DEFAULT_PASS=${RABBITMQ_PASSWORD}
+    ports:
+      - "${RABBITMQ_PORT:-5672}:5672"
+      - "${RABBITMQ_MANAGEMENT_PORT:-15672}:15672"
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    networks:
+      - app-network
+    restart: unless-stopped
+  ```
+
+  **For Elasticsearch:**
+  ```yaml
+  elasticsearch:
+    image: elasticsearch:8.11.0
+    container_name: ${PROJECT_NAME}-elasticsearch
+    environment:
+      - discovery.type=single-node
+      - ES_JAVA_OPTS=-Xms512m -Xmx512m
+      - xpack.security.enabled=false
+    ports:
+      - "${ELASTICSEARCH_PORT:-9200}:9200"
+    volumes:
+      - elasticsearch-data:/usr/share/elasticsearch/data
+    networks:
+      - app-network
+    restart: unless-stopped
+  ```
+
+  **For Custom Application:**
+  ```yaml
+  {service-name}:
+    build:
+      context: .
+      dockerfile: Dockerfile.{service-name}
+    container_name: ${PROJECT_NAME}-{service-name}
+    ports:
+      - "${SERVICE_PORT}:{internal-port}"
+    volumes:
+      - .:/app  # For development hot-reload
+      - {service-name}-data:/data
+    environment:
+      - DATABASE_URL=${DATABASE_URL}
+      - REDIS_URL=${REDIS_URL}
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - app-network
+    restart: unless-stopped
+  ```
+
+  **Step 4: Add Volume Declaration**
+
+  If the service needs persistent data, add to volumes section:
+  ```yaml
+  volumes:
+    {service-name}-data:
+  ```
+
+  **Step 5: Update .env.example**
+
+  Add required environment variables:
+  ```bash
+  # {Service Name}
+  {SERVICE}_PORT={default-port}
+  {SERVICE}_USER={default-user}
+  {SERVICE}_PASSWORD=changeme
+  {SERVICE}_DB={default-db-name}
+  ```
+
+  **Step 6: Update .env**
+
+  Remind user to copy variables to their local .env file:
+  ```bash
+  # Add these to your .env file:
+  {SERVICE}_PORT=...
+  {SERVICE}_USER=...
+  {SERVICE}_PASSWORD=...
+  ```
+
+  **Step 7: Update Application Configuration**
+
+  Show how to connect from the app:
+
+  **In settings.py:**
+  ```python
+  from pydantic_settings import BaseSettings
+
+  class Settings(BaseSettings):
+      {service}_url: str
+      # Example: redis_url: str = "redis://redis:6379"
+
+      class Config:
+          env_file = ".env"
+  ```
+
+  **In service code:**
+  ```python
+  # For Redis
+  import redis
+  r = redis.from_url(settings.redis_url)
+
+  # For RabbitMQ
+  import pika
+  connection = pika.BlockingConnection(
+      pika.URLParameters(settings.rabbitmq_url)
+  )
+
+  # For Elasticsearch
+  from elasticsearch import Elasticsearch
+  es = Elasticsearch([settings.elasticsearch_url])
+  ```
+
+  **Step 8: Network Configuration**
+
+  Explain service communication:
+  ```python
+  # Services in same docker-compose can reference by service name:
+  DATABASE_URL = "postgresql://user:pass@postgres:5432/db"
+  REDIS_URL = "redis://redis:6379"
+  RABBITMQ_URL = "amqp://user:pass@rabbitmq:5672"
+
+  # NOT "localhost" - that refers to the container itself!
+  ```
+
+  **Step 9: Start and Verify**
+
+  Show how to start the new service:
+  ```bash
+  # Rebuild if needed
+  ./run.sh build
+
+  # Start services
+  ./run.sh start
+
+  # Check if service is running
+  docker-compose ps
+
+  # View service logs
+  ./run.sh logs {service-name}
+
+  # Test connection
+  docker-compose exec app python -c "import {library}; # test connection"
+  ```
+
+  **Step 10: Health Check**
+
+  Add health check to ensure service is ready before app starts:
+  ```yaml
+  app:
+    depends_on:
+      {service-name}:
+        condition: service_healthy
+  ```
+
+  **Best Practices (from docker-deployment.md):**
+  - ✅ Use alpine images when available (smaller size)
+  - ✅ Pin specific versions (not `latest`)
+  - ✅ Use environment variables for configuration
+  - ✅ Named volumes for data persistence
+  - ✅ Health checks for critical services
+  - ✅ Resource limits in production:
+    ```yaml
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1G
+    ```
+  - ✅ Only expose ports you need to access from host
+  - ✅ Use restart: unless-stopped for reliability
+
+  **Port Management:**
+  Make ports configurable via .env to avoid conflicts:
+  ```yaml
+  ports:
+    - "${SERVICE_PORT:-5432}:5432"
+  ```
+
+  **Common Port Assignments:**
+  - PostgreSQL: 5432
+  - Redis: 6379
+  - RabbitMQ: 5672 (AMQP), 15672 (management)
+  - Elasticsearch: 9200
+  - MongoDB: 27017
+  - MySQL: 3306
+
+  **Troubleshooting:**
+
+  If service won't start:
+  ```bash
+  # Check logs
+  docker-compose logs {service-name}
+
+  # Check if port is in use
+  lsof -i :{port}
+
+  # Remove and recreate
+  docker-compose down
+  docker-compose up -d {service-name}
+  ```
+
+  **Reference**: docker-deployment.md for full patterns and examples.

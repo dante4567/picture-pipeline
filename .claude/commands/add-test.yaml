@@ -1,0 +1,158 @@
+name: add-test
+description: Generate comprehensive test suite for existing code
+prompt: |
+  You are generating tests for existing code in a Python project.
+
+  **Step 1: Gather Information**
+
+  Ask the user:
+  1. **What to test** - File path or module name (e.g., `src/services/user_service.py`)
+  2. **Test type** - unit, integration, or e2e
+  3. **Coverage focus** - specific functions/classes or entire module
+
+  **Step 2: Load Reference Documentation**
+
+  Read `.claude/reference/testing-patterns.md` for patterns and best practices.
+
+  **Step 3: Analyze Existing Code**
+
+  Read the target file and identify:
+  - Functions/methods to test
+  - Dependencies (database, external APIs, etc.)
+  - Edge cases and error conditions
+  - Input validation requirements
+
+  **Step 4: Generate Test File**
+
+  Create `tests/test_{module_name}.py` with:
+
+  **Test Structure:**
+  ```python
+  import pytest
+  from fastapi.testclient import TestClient
+  from sqlalchemy import create_engine
+  from sqlalchemy.orm import sessionmaker
+
+  # Imports for code under test
+  from src.{module_path} import {functions/classes}
+
+  # Test fixtures
+  @pytest.fixture(scope="function")
+  def db_session():
+      # Database fixture for integration tests
+      ...
+
+  @pytest.fixture
+  def sample_data():
+      # Sample test data
+      ...
+
+  # Test classes (group related tests)
+  class TestResourceCreate:
+      def test_create_success(self, db_session, sample_data):
+          """Test successful creation."""
+          ...
+
+      def test_create_duplicate(self, db_session, sample_data):
+          """Test duplicate handling."""
+          ...
+
+      def test_create_invalid_input(self, db_session):
+          """Test validation errors."""
+          ...
+  ```
+
+  **Follow Testing Pyramid (from testing-patterns.md):**
+  - **70% Unit tests** - Test individual functions, mock dependencies
+  - **20% Integration tests** - Test with real database, mock external APIs
+  - **10% E2E tests** - Test full API flow
+
+  **For Unit Tests:**
+  - Mock all external dependencies
+  - Test one function at a time
+  - Fast execution (< 1s per test)
+  - Use `@pytest.mark.unit`
+
+  **For Integration Tests:**
+  - Use test database fixture
+  - Test service layer with real DB
+  - Mock external APIs (litellm, etc.)
+  - Use `@pytest.mark.integration`
+
+  **For E2E Tests:**
+  - Use TestClient for full HTTP flow
+  - Test complete user scenarios
+  - Use `@pytest.mark.e2e`
+
+  **Coverage Checklist:**
+  - [ ] Happy path (successful operations)
+  - [ ] Edge cases (empty input, max values, special characters)
+  - [ ] Error cases (not found, validation errors, conflicts)
+  - [ ] Boundary conditions (pagination limits, max lengths)
+  - [ ] Security (injection attempts, invalid auth)
+
+  **Mocking Pattern (from testing-patterns.md):**
+  ```python
+  from unittest.mock import Mock, patch, AsyncMock
+
+  @patch('src.services.user_service.litellm.completion')
+  def test_with_llm_mock(mock_completion, db_session):
+      mock_completion.return_value = {
+          "choices": [{"message": {"content": "response"}}]
+      }
+      # Test code that uses litellm
+      ...
+  ```
+
+  **Step 5: Add Test Commands to run.sh**
+
+  If not already present, show how to add test commands:
+  ```bash
+  test)
+      echo "Running tests..."
+      docker-compose exec app pytest tests/ -v
+      ;;
+
+  test-unit)
+      docker-compose exec app pytest tests/ -v -m unit
+      ;;
+
+  test-integration)
+      docker-compose exec app pytest tests/ -v -m integration
+      ;;
+
+  test-coverage)
+      docker-compose exec app pytest tests/ --cov=src --cov-report=html
+      ;;
+  ```
+
+  **Step 6: Run Tests**
+
+  Show how to run:
+  ```bash
+  ./run.sh test                    # All tests
+  ./run.sh test tests/test_user.py # Specific file
+  ./run.sh test-unit               # Unit tests only
+  ./run.sh test-coverage           # With coverage report
+  ```
+
+  **Best Practices (from testing-patterns.md):**
+  - One assertion per test (when possible)
+  - Clear test names describing what's tested
+  - Arrange-Act-Assert (AAA) pattern
+  - Use fixtures for reusable test data
+  - Clean up after tests (transactions, temp files)
+  - Test data in fixtures, not hardcoded
+  - Mock external services (never call real APIs)
+
+  **Structured Logging in Tests:**
+  ```python
+  import structlog
+
+  logger = structlog.get_logger()
+
+  def test_something(caplog):
+      logger.info("test_event", key="value")
+      # Test code
+      assert "test_event" in caplog.text
+  ```

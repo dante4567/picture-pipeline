@@ -1,0 +1,297 @@
+name: refactor
+description: Refactor code following best practices and design patterns
+prompt: |
+  You are refactoring code to improve quality, maintainability, and follow best practices.
+
+  **Step 1: Determine Scope**
+
+  Ask the user:
+  1. **What to refactor** - File path or module name
+  2. **Refactoring goal** - Improve readability, performance, testability, or fix code smells
+  3. **Constraints** - Keep same API? Maintain backward compatibility?
+
+  **Step 2: Analyze Current Code**
+
+  Read the target file and identify:
+  - **Code smells**: Long functions, duplicate code, god objects
+  - **Violations**: SOLID principles, DRY, separation of concerns
+  - **Performance issues**: N+1 queries, unnecessary loops
+  - **Testing gaps**: Hard to test code, tightly coupled
+
+  **Step 3: Common Refactoring Patterns**
+
+  **Extract Method (Long Functions):**
+  ```python
+  # ❌ BEFORE: Long function doing too much
+  def process_order(order_data):
+      # Validate (20 lines)
+      if not order_data.get("items"):
+          raise ValueError("No items")
+      # ... more validation
+
+      # Calculate total (15 lines)
+      total = 0
+      for item in order_data["items"]:
+          total += item["price"] * item["quantity"]
+      # ... more calculation
+
+      # Send email (10 lines)
+      # ... email logic
+
+  # ✅ AFTER: Extracted methods
+  def process_order(order_data):
+      validate_order(order_data)
+      total = calculate_total(order_data["items"])
+      send_confirmation_email(order_data, total)
+
+  def validate_order(order_data):
+      """Validate order data."""
+      if not order_data.get("items"):
+          raise ValueError("No items")
+      # ... validation logic
+
+  def calculate_total(items):
+      """Calculate order total."""
+      return sum(item["price"] * item["quantity"] for item in items)
+
+  def send_confirmation_email(order_data, total):
+      """Send order confirmation email."""
+      # ... email logic
+  ```
+
+  **Extract Class (God Object):**
+  ```python
+  # ❌ BEFORE: Class doing too much
+  class UserManager:
+      def create_user(self, data):
+          ...
+      def send_welcome_email(self, user):
+          ...
+      def charge_credit_card(self, user, amount):
+          ...
+      def generate_report(self, user_id):
+          ...
+
+  # ✅ AFTER: Separated concerns
+  class UserService:
+      def create_user(self, data):
+          ...
+
+  class EmailService:
+      def send_welcome_email(self, user):
+          ...
+
+  class PaymentService:
+      def charge_credit_card(self, user, amount):
+          ...
+
+  class ReportService:
+      def generate_user_report(self, user_id):
+          ...
+  ```
+
+  **Remove Duplication (DRY):**
+  ```python
+  # ❌ BEFORE: Duplicated code
+  def get_active_users(db):
+      return db.query(User).filter(User.is_active == True).all()
+
+  def get_active_admins(db):
+      return db.query(User).filter(User.is_active == True, User.is_admin == True).all()
+
+  def get_active_premium_users(db):
+      return db.query(User).filter(User.is_active == True, User.is_premium == True).all()
+
+  # ✅ AFTER: Reusable query builder
+  def get_active_users_query(db):
+      """Base query for active users."""
+      return db.query(User).filter(User.is_active == True)
+
+  def get_active_users(db):
+      return get_active_users_query(db).all()
+
+  def get_active_admins(db):
+      return get_active_users_query(db).filter(User.is_admin == True).all()
+
+  def get_active_premium_users(db):
+      return get_active_users_query(db).filter(User.is_premium == True).all()
+  ```
+
+  **Dependency Injection (Testability):**
+  ```python
+  # ❌ BEFORE: Hard to test (hardcoded dependencies)
+  class OrderService:
+      def create_order(self, order_data):
+          payment = PaymentService()  # Hardcoded!
+          email = EmailService()      # Hardcoded!
+
+          payment.charge(order_data["amount"])
+          email.send_confirmation(order_data)
+
+  # ✅ AFTER: Dependency injection
+  class OrderService:
+      def __init__(self, payment_service, email_service):
+          self.payment = payment_service
+          self.email = email_service
+
+      def create_order(self, order_data):
+          self.payment.charge(order_data["amount"])
+          self.email.send_confirmation(order_data)
+
+  # Easy to test with mocks
+  def test_create_order():
+      mock_payment = Mock()
+      mock_email = Mock()
+      service = OrderService(mock_payment, mock_email)
+      service.create_order({"amount": 100})
+      mock_payment.charge.assert_called_once_with(100)
+  ```
+
+  **Replace Magic Numbers (Readability):**
+  ```python
+  # ❌ BEFORE: Magic numbers
+  if user.age > 18 and user.status == 1:
+      return True
+
+  # ✅ AFTER: Named constants
+  ADULT_AGE = 18
+  STATUS_ACTIVE = 1
+
+  if user.age > ADULT_AGE and user.status == STATUS_ACTIVE:
+      return True
+
+  # Even better: Use enums
+  class UserStatus(Enum):
+      INACTIVE = 0
+      ACTIVE = 1
+      SUSPENDED = 2
+
+  if user.age > ADULT_AGE and user.status == UserStatus.ACTIVE:
+      return True
+  ```
+
+  **Simplify Conditionals:**
+  ```python
+  # ❌ BEFORE: Complex nested conditions
+  if user:
+      if user.is_active:
+          if user.has_permission("read"):
+              return True
+          else:
+              return False
+      else:
+          return False
+  else:
+      return False
+
+  # ✅ AFTER: Early return pattern
+  if not user:
+      return False
+  if not user.is_active:
+      return False
+  return user.has_permission("read")
+
+  # Even better: Single expression
+  return user and user.is_active and user.has_permission("read")
+  ```
+
+  **Replace Type Code with Polymorphism:**
+  ```python
+  # ❌ BEFORE: Type checking everywhere
+  def calculate_price(product):
+      if product.type == "book":
+          return product.base_price * 0.9  # 10% discount
+      elif product.type == "electronics":
+          return product.base_price * 1.2  # 20% markup
+      elif product.type == "food":
+          return product.base_price * 1.1  # 10% markup
+
+  # ✅ AFTER: Polymorphism
+  class Product(ABC):
+      @abstractmethod
+      def calculate_price(self) -> float:
+          pass
+
+  class Book(Product):
+      def calculate_price(self) -> float:
+          return self.base_price * 0.9
+
+  class Electronics(Product):
+      def calculate_price(self) -> float:
+          return self.base_price * 1.2
+
+  class Food(Product):
+      def calculate_price(self) -> float:
+          return self.base_price * 1.1
+  ```
+
+  **Step 4: Refactoring Checklist**
+
+  Before refactoring:
+  - [ ] All existing tests pass
+  - [ ] Code is under version control
+  - [ ] You understand what the code does
+
+  While refactoring:
+  - [ ] Make small, incremental changes
+  - [ ] Run tests after each change
+  - [ ] Commit after each successful refactoring
+  - [ ] Don't add features during refactoring
+
+  After refactoring:
+  - [ ] All tests still pass
+  - [ ] No behavior changes (same inputs = same outputs)
+  - [ ] Code is more readable
+  - [ ] Complexity reduced (fewer conditionals, shorter functions)
+
+  **Step 5: Run Tests**
+
+  ```bash
+  # Run tests before refactoring
+  ./run.sh test
+
+  # Refactor code
+
+  # Run tests after refactoring
+  ./run.sh test
+
+  # If tests fail, rollback or fix
+  ```
+
+  **Step 6: Measure Improvement**
+
+  Use metrics to verify improvement:
+  ```bash
+  # Cyclomatic complexity
+  pip install radon
+  radon cc src/services/order_service.py
+
+  # Lines of code
+  wc -l src/services/order_service.py
+
+  # Test coverage
+  pytest --cov=src tests/
+  ```
+
+  **Common Refactoring Goals:**
+
+  | Goal | Before | After |
+  |------|--------|-------|
+  | **Readability** | Long functions, unclear names | Short functions, descriptive names |
+  | **Testability** | Hardcoded dependencies, god objects | Dependency injection, SRP |
+  | **Performance** | N+1 queries, nested loops | Batch queries, optimized algorithms |
+  | **Maintainability** | Duplicate code, magic numbers | DRY, named constants |
+  | **Extensibility** | Type checking, long if/else | Polymorphism, strategy pattern |
+
+  **When NOT to Refactor:**
+
+  ❌ **DON'T refactor if:**
+  - No tests exist (write tests first!)
+  - On a deadline (schedule refactoring later)
+  - Code works and won't be touched again
+  - You don't understand the code (learn first)
+  - Changing behavior (that's a feature, not refactoring)
+
+  **Reference**:
+  - python-api-development.md for service layer patterns
+  - testing-patterns.md for testability improvements
