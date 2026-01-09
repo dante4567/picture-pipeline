@@ -43,6 +43,11 @@ case "$1" in
         echo "  2. Run tests: ./run.sh test"
         ;;
 
+    inventory)
+        echo "Running photo source inventory..."
+        python -m src.ingestion.inventory
+        ;;
+
     import)
         echo "Import not yet implemented"
         echo "Coming soon: Import photos from directory"
@@ -55,6 +60,7 @@ case "$1" in
         echo ""
         echo "Commands:"
         echo "  setup              Set up picture-pipeline (install deps, check exiftool)"
+        echo "  inventory          Scan all photo sources and generate inventory report"
         echo "  verify-iphone      Verify if photo is from iPhone"
         echo "  test               Run tests"
         echo "  import             Import photos (not yet implemented)"

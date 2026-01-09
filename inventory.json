@@ -1,0 +1,107 @@
+{
+  "scan_date": "2026-01-09T02:00:42.788249",
+  "sources": [
+    {
+      "name": "icloudSync (Docker)",
+      "path": "Not found",
+      "exists": false,
+      "count": 0,
+      "size_bytes": 0,
+      "size_gb": 0.0,
+      "formats": {},
+      "sample_files": [],
+      "has_metadata": false,
+      "notes": "Not found. Check Proxmox container status."
+    },
+    {
+      "name": "iCloud Photos",
+      "path": "Not found",
+      "exists": false,
+      "count": 0,
+      "size_bytes": 0,
+      "size_gb": 0.0,
+      "formats": {},
+      "sample_files": [],
+      "has_metadata": false,
+      "notes": "Not found on this system"
+    },
+    {
+      "name": "digiKam Library",
+      "path": "Not found",
+      "exists": false,
+      "count": 0,
+      "size_bytes": 0,
+      "size_gb": 0.0,
+      "formats": {},
+      "sample_files": [],
+      "has_metadata": false,
+      "notes": "Not found on this system"
+    },
+    {
+      "name": "Immich Storage",
+      "path": "Not found",
+      "exists": false,
+      "count": 0,
+      "size_bytes": 0,
+      "size_gb": 0.0,
+      "formats": {},
+      "sample_files": [],
+      "has_metadata": false,
+      "notes": "Not found on this system"
+    },
+    {
+      "name": "PhotoPrism Storage",
+      "path": "Not found",
+      "exists": false,
+      "count": 0,
+      "size_bytes": 0,
+      "size_gb": 0.0,
+      "formats": {},
+      "sample_files": [],
+      "has_metadata": false,
+      "notes": "Not found on this system"
+    },
+    {
+      "name": "Damselfly Storage",
+      "path": "Not found",
+      "exists": false,
+      "count": 0,
+      "size_bytes": 0,
+      "size_gb": 0.0,
+      "formats": {},
+      "sample_files": [],
+      "has_metadata": false,
+      "notes": "Not found on this system"
+    },
+    {
+      "name": "Google Photos Export",
+      "path": "Not found",
+      "exists": false,
+      "count": 0,
+      "size_bytes": 0,
+      "size_gb": 0.0,
+      "formats": {},
+      "sample_files": [],
+      "has_metadata": false,
+      "notes": "Not downloaded. Use takeout.google.com to export."
+    },
+    {
+      "name": "NAS Scattered",
+      "path": "Not found",
+      "exists": false,
+      "count": 0,
+      "size_bytes": 0,
+      "size_gb": 0.0,
+      "formats": {},
+      "sample_files": [],
+      "has_metadata": false,
+      "notes": "No scattered photos found"
+    }
+  ],
+  "total_photos": 0,
+  "total_size_gb": 0,
+  "unique_formats": [],
+  "estimated_duplicates": 0,
+  "estimated_unique": 0,
+  "estimated_after_dedup_gb": 0.0
+}

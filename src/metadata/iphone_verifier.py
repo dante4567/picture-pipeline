@@ -102,12 +102,14 @@ class iPhonePhotoVerifier:
         # Check 3: Software/iOS version (HIGHLY RECOMMENDED)
         software = metadata.get("EXIF:Software") or metadata.get("IFD0:Software")
         ios_version = None
-        if software and ("iOS" in software or "iPhone OS" in software):
-            ios_version = software
-            reasons.append(f"✓ iOS software: {software}")
+        software_str = str(software) if software is not None else ""
+        if software_str and ("iOS" in software_str or "iPhone OS" in software_str or software_str.replace(".", "").isdigit()):
+            # Accept iOS string or version number like "16.4.1"
+            ios_version = software_str
+            reasons.append(f"✓ iOS software: {software_str}")
             confidence_score += 0.2
         else:
-            reasons.append(f"⚠ Software not iOS: {software}")
+            reasons.append(f"⚠ Software not iOS: {software_str}")
             confidence_score += 0.05  # Still possible, but less confident
 
         # Check 4: Apple-specific tags (STRONG INDICATOR)
