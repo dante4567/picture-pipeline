@@ -1,0 +1,39 @@
+# Core dependencies
+python-dotenv==1.0.0
+click==8.1.7
+Pillow==10.1.0
+
+# Database
+sqlalchemy==2.0.23
+psycopg2-binary==2.9.9
+alembic==1.13.0
+pgvector==0.2.4
+
+# Image processing
+pillow-heif==0.14.0  # HEIC support
+imagehash==4.3.1     # Perceptual hashing
+
+# Metadata extraction (requires system exiftool)
+# Install: sudo apt install libimage-exiftool-perl
+
+# Face recognition
+face-recognition==1.3.0
+# deepface==0.0.79  # Optional, multiple models
+
+# AI/LLM
+litellm==1.11.1
+
+# XMP/Metadata
+python-xmp-toolkit==2.0.1
+lxml==4.9.3
+
+# Video processing
+# ffmpeg-python==0.2.0  # Optional for video conversion
+
+# Utilities
+tqdm==4.66.1
+pandas==2.1.4  # For analysis/reports
+
+# Testing
+pytest==7.4.3
+pytest-cov==4.1.0
