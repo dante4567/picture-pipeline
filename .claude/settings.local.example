@@ -1,0 +1,7 @@
+  [0;32m→[0m Create .claude/settings.local.example
+{
+  "_comment": "Personal overrides - copy to settings.local.json (gitignored)",
+  "personal": {
+    "preferred_model": "opus"
+  }
+}
