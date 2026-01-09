@@ -48,6 +48,37 @@ case "$1" in
         python -m src.ingestion.inventory
         ;;
 
+    build)
+        echo "Building Docker image..."
+        docker build -t picture-pipeline .
+        ;;
+
+    hash)
+        if [ -z "$2" ]; then
+            echo "Usage: ./run.sh hash <photo1> [photo2]"
+            echo ""
+            echo "Calculate SHA256 and perceptual hash for photos"
+            echo "If two photos provided, compares visual similarity"
+            exit 1
+        fi
+        echo "Hashing photos in Docker..."
+        if [ -z "$3" ]; then
+            # Single photo
+            docker run --rm \
+                -v "$(pwd):/app" \
+                -v "/mnt/nas-photos:/mnt/nas-photos:ro" \
+                picture-pipeline \
+                python -m src.deduplication.hashing "$2"
+        else
+            # Two photos (comparison)
+            docker run --rm \
+                -v "$(pwd):/app" \
+                -v "/mnt/nas-photos:/mnt/nas-photos:ro" \
+                picture-pipeline \
+                python -m src.deduplication.hashing "$2" "$3"
+        fi
+        ;;
+
     import)
         echo "Import not yet implemented"
         echo "Coming soon: Import photos from directory"
@@ -60,13 +91,17 @@ case "$1" in
         echo ""
         echo "Commands:"
         echo "  setup              Set up picture-pipeline (install deps, check exiftool)"
+        echo "  build              Build Docker image"
         echo "  inventory          Scan all photo sources and generate inventory report"
+        echo "  hash               Calculate SHA256 and pHash for photos"
         echo "  verify-iphone      Verify if photo is from iPhone"
         echo "  test               Run tests"
         echo "  import             Import photos (not yet implemented)"
         echo ""
         echo "Examples:"
-        echo "  ./run.sh setup"
+        echo "  ./run.sh build"
+        echo "  ./run.sh hash /path/to/photo.jpg"
+        echo "  ./run.sh hash /path/to/photo1.jpg /path/to/photo2.jpg"
         echo "  ./run.sh verify-iphone ~/Pictures/IMG_1234.jpg"
         exit 1
         ;;
