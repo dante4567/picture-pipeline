@@ -64,10 +64,10 @@
   },
 
   "project": {
-    "name": "[Project Name]",
+    "name": "picture-pipeline",
     "current_version": "0.1.0",
-    "current_milestone": "[Milestone Name]",
-    "tech_stack": ["python", "docker", "[vector-db]"],
+    "current_milestone": "Foundation",
+    "tech_stack": ["python", "docker", "postgresql"],
     "entry_point": "./run.sh"
   },
 
