@@ -1,27 +1,25 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-settings.json",
-
   "_comment": "This file is committed to git. All agents see the same rules. Replace [placeholders] when using this template.",
-
   "instructions": [
     "Read CLAUDE.md and AGENTS.md before making any changes",
     "Update README status table after changing functionality",
     "Use ./run.sh as entry point, not raw python/docker commands",
     "Commit with conventional commit messages (feat:, fix:, docs:, etc.)",
-    "Periodically ask 5 alignment questions (one at a time) to ensure we're on the same page",
+    "Periodically ask brief alignment questions (one at a time) about what/why/which-repo to ensure critical decisions are covered",
     "Optionally at startup: offer to run ~/Documents/mygit/repo-template/scripts/honest-assessment.sh for no-BS reality check",
     "For bulk refactors (50+ files) or heavy repetitive edits, suggest user consider using another AI tool optimized for speed",
     "For architecture review or edge case discovery, suggest user consider using Gemini for second opinion",
-    "At version milestones, request Opus review"
+    "At version milestones, request Opus review",
+    "For planning new versions or major features, use Opus model",
+    "Apply no-regret thinking: prioritize high-impact/low-effort changes, flag surprisingly costly features"
   ],
-
   "permissions": {
     "allow_shell": true,
     "allow_file_write": true,
     "allow_file_delete": false,
     "allow_network": true
   },
-
   "context": {
     "always_read": [
       "CLAUDE.md",
@@ -39,7 +37,6 @@
       "*.log"
     ]
   },
-
   "autonomy": {
     "_comment": "Maps to AGENTS.md autonomy levels",
     "level_1_free": [
@@ -62,15 +59,17 @@
       "delete files"
     ]
   },
-
   "project": {
     "name": "picture-pipeline",
     "current_version": "0.1.0",
     "current_milestone": "Foundation",
-    "tech_stack": ["python", "docker", "postgresql"],
+    "tech_stack": [
+      "python",
+      "docker",
+      "postgresql"
+    ],
     "entry_point": "./run.sh"
   },
-
   "hooks": {
     "SessionStart": [
       {
